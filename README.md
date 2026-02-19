@@ -78,6 +78,16 @@ export SB_LINEAR_API_KEY="dev-token"
 
 For `synth-managed-research`, use the same token style already supported by its client (`raw` or `Bearer`) and wire endpoint in your local integration path to `http://127.0.0.1:8787/graphql`.
 
+## Parity Tests
+
+Run GraphQL parity checks for the exact query/mutation shapes currently used by `synth-background` and `synth-managed-research`:
+
+```bash
+./scripts/parity_test.sh
+```
+
+The script boots `sublinear`, executes those operations end-to-end, and fails fast on any GraphQL errors or shape regressions.
+
 ## License
 
 MIT
