@@ -510,6 +510,18 @@ impl MutationRoot {
             .await
             .map_err(gql_error)
     }
+
+    async fn admin_import_project(
+        &self,
+        ctx: &Context<'_>,
+        input: AdminImportProjectInput,
+    ) -> GqlResult<AdminImportProjectPayload> {
+        ensure_auth(ctx)?;
+        let app = app_ctx(ctx);
+        import_project_1to1(&app.conn, input)
+            .await
+            .map_err(gql_error)
+    }
 }
 
 #[derive(Clone, SimpleObject)]
@@ -720,6 +732,13 @@ struct IssueAddLabelPayload {
     success: bool,
 }
 
+#[derive(Clone, SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+struct AdminImportProjectPayload {
+    success: bool,
+    project: Project,
+}
+
 #[derive(InputObject, Clone, Default)]
 #[graphql(rename_fields = "camelCase")]
 struct StringFilter {
@@ -817,6 +836,17 @@ struct IssueUpdateInput {
 struct CommentCreateInput {
     issue_id: String,
     body: String,
+}
+
+#[derive(InputObject, Clone)]
+#[graphql(rename_fields = "camelCase")]
+struct AdminImportProjectInput {
+    id: String,
+    name: String,
+    slug_id: String,
+    state: Option<String>,
+    archived_at: Option<String>,
+    url: String,
 }
 
 #[derive(Enum, Clone, Copy, Eq, PartialEq)]
@@ -1397,6 +1427,46 @@ async fn add_label(
     .await?;
 
     Ok(IssueAddLabelPayload { success: true })
+}
+
+async fn import_project_1to1(
+    conn: &Connection,
+    input: AdminImportProjectInput,
+) -> Result<AdminImportProjectPayload> {
+    conn.execute(
+        "DELETE FROM projects WHERE slug_id = ?1 AND id <> ?2",
+        vals(vec![input.slug_id.clone().into(), input.id.clone().into()]),
+    )
+    .await?;
+
+    conn.execute(
+        "INSERT INTO projects (id, name, slug_id, state, archived_at, url, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           slug_id = excluded.slug_id,
+           state = excluded.state,
+           archived_at = excluded.archived_at,
+           url = excluded.url",
+        vals(vec![
+            input.id.clone().into(),
+            input.name.clone().into(),
+            input.slug_id.clone().into(),
+            option_string_to_value(input.state.clone()),
+            option_string_to_value(input.archived_at.clone()),
+            input.url.clone().into(),
+            now_iso().into(),
+        ]),
+    )
+    .await?;
+
+    let project = get_project(conn, &input.id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("failed to load imported project"))?;
+    Ok(AdminImportProjectPayload {
+        success: true,
+        project,
+    })
 }
 
 async fn issue_from_row(conn: &Connection, row: IssueBaseRow) -> Result<Issue> {

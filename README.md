@@ -88,6 +88,24 @@ Run GraphQL parity checks for the exact query/mutation shapes currently used by 
 
 The script boots `sublinear`, executes those operations end-to-end, and fails fast on any GraphQL errors or shape regressions.
 
+To compare shape parity directly against real Linear:
+
+```bash
+./scripts/parity_with_real_linear.sh
+```
+
+## Real Project Sync (1:1 IDs)
+
+To copy real Linear projects into `sublinear` with exact project IDs and metadata (`id`, `name`, `slugId`, `state`, `archivedAt`, `url`):
+
+```bash
+./scripts/sync_projects_from_linear.sh
+```
+
+This requires:
+- `sublinear` running (`SUBLINEAR_GRAPHQL_URL`, default `http://127.0.0.1:8787/graphql`)
+- Linear API key in `REAL_LINEAR_API_KEY` (or `LINEAR_API_KEY` / `SB_LINEAR_API_KEY`)
+
 ## License
 
 MIT
