@@ -63,7 +63,7 @@ for _ in {1..60}; do
 done
 curl -fsS "${BASE_URL}/healthz" >/dev/null
 
-echo "Running synth-background parity queries..."
+echo "Running baseline parity queries..."
 
 resp="$(gql 'query{viewer{id name email}}')"
 assert_no_errors "${resp}" "viewer"
@@ -121,29 +121,29 @@ resp="$(gql 'query($teamKey:String!,$numbers:[Float!]!){issues(filter:{team:{key
 assert_no_errors "${resp}" "issues_by_identifiers"
 jq -e '.data.issues.nodes[] | select(.identifier=="'"${identifier}"'")' >/dev/null <<<"${resp}"
 
-echo "Running smr parity queries..."
+echo "Running extended parity queries..."
 
 resp="$(gql 'query{teams{nodes{id name key}}}')"
-assert_no_errors "${resp}" "smr_list_teams"
+assert_no_errors "${resp}" "extended_list_teams"
 
-resp="$(gql 'mutation($issueId:String!,$body:String!){commentCreate(input:{issueId:$issueId,body:$body}){success comment{id body url}}}' "{\"issueId\":\"${issue_id}\",\"body\":\"smr comment\"}")"
-assert_no_errors "${resp}" "smr_create_comment"
+resp="$(gql 'mutation($issueId:String!,$body:String!){commentCreate(input:{issueId:$issueId,body:$body}){success comment{id body url}}}' "{\"issueId\":\"${issue_id}\",\"body\":\"extended comment\"}")"
+assert_no_errors "${resp}" "extended_create_comment"
 jq -e '.data.commentCreate.comment.id and .data.commentCreate.comment.url' >/dev/null <<<"${resp}"
 
 resp="$(gql 'query($teamId:String!){team(id:$teamId){states{nodes{id name type}}}}' "{\"teamId\":\"${team_id}\"}")"
-assert_no_errors "${resp}" "smr_list_workflow_states"
+assert_no_errors "${resp}" "extended_list_workflow_states"
 jq -e '.data.team.states.nodes | length > 0' >/dev/null <<<"${resp}"
 
-resp="$(gql 'mutation($id:String!,$input:IssueUpdateInput!){issueUpdate(id:$id,input:$input){success issue{id identifier title url state{id name type}}}}' "{\"id\":\"${issue_id}\",\"input\":{\"stateId\":\"${done_state_id}\",\"title\":\"smr updated\"}}")"
-assert_no_errors "${resp}" "smr_update_issue"
+resp="$(gql 'mutation($id:String!,$input:IssueUpdateInput!){issueUpdate(id:$id,input:$input){success issue{id identifier title url state{id name type}}}}' "{\"id\":\"${issue_id}\",\"input\":{\"stateId\":\"${done_state_id}\",\"title\":\"extended updated\"}}")"
+assert_no_errors "${resp}" "extended_update_issue"
 jq -e '.data.issueUpdate.success == true' >/dev/null <<<"${resp}"
 
 resp="$(gql 'query($projectId:String!,$first:Int!){project(id:$projectId){issues(first:$first){nodes{id identifier title url state{id name type}}}}}' "{\"projectId\":\"${project_id}\",\"first\":25}")"
-assert_no_errors "${resp}" "smr_list_project_issues"
+assert_no_errors "${resp}" "extended_list_project_issues"
 jq -e '.data.project.issues.nodes[] | select(.id=="'"${issue_id}"'")' >/dev/null <<<"${resp}"
 
 resp="$(gql 'mutation($id:String!){issueArchive(id:$id){success}}' "{\"id\":\"${issue_id}\"}")"
-assert_no_errors "${resp}" "smr_archive_issue"
+assert_no_errors "${resp}" "extended_archive_issue"
 jq -e '.data.issueArchive.success == true' >/dev/null <<<"${resp}"
 
 echo "PASS: parity tests succeeded."

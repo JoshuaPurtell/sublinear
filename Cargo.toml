@@ -1,10 +1,21 @@
 [package]
-name = "sublinear"
-version = "0.1.0"
+name = "sublinear-dev"
+version = "0.2.0"
 edition = "2024"
 description = "Dev-only Turso-backed Linear GraphQL replacement"
 license = "MIT"
 repository = "https://github.com/joshuapurtell/sublinear"
+readme = "README.md"
+keywords = ["linear", "graphql", "turso", "testing", "devtools"]
+categories = ["development-tools::testing", "web-programming::http-server"]
+
+[lib]
+name = "sublinear_dev"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sublinear"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.98"

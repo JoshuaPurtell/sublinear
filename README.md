@@ -1,11 +1,8 @@
 # sublinear
 
-`sublinear` is a **dev-only**, Turso/libSQL-backed replacement for the subset of Linear GraphQL used by:
+`sublinear` is a **dev-only**, Turso/libSQL-backed Linear GraphQL replacement.
 
-- `/Users/joshpurtell/Documents/Github/synth-background`
-- `/Users/joshpurtell/Documents/Github/synth-managed-research`
-
-It is intentionally narrow and intentionally not production-grade.
+Crate name on crates.io: `sublinear-dev` (library path: `sublinear_dev`).
 
 ## Not For Production
 
@@ -36,7 +33,7 @@ Mutations:
 - `issueAddLabel`
 - `commentCreate`
 
-This covers the API calls currently made by the Rust Linear clients in `synth-background` and `synth-managed-research`.
+This covers the currently implemented GraphQL surface.
 
 ## Run
 
@@ -47,6 +44,18 @@ cargo run
 Server defaults:
 - GraphQL: `http://127.0.0.1:8787/graphql`
 - Health: `http://127.0.0.1:8787/healthz`
+
+## Use As Dependency
+
+```bash
+cargo add sublinear-dev
+```
+
+Then in Rust:
+
+```rust
+use sublinear_dev::run_from_env;
+```
 
 ## Environment
 
@@ -67,20 +76,18 @@ Seed defaults:
 - `SUBLINEAR_SEED_TEAM_NAME`
 - `SUBLINEAR_SEED_TEAM_KEY`
 
-## Point Existing Apps To sublinear
+## Point Your App To sublinear
 
-For `synth-background`, set:
+Set your Linear GraphQL endpoint to:
 
 ```bash
-export SB_LINEAR_API_URL="http://127.0.0.1:8787/graphql"
-export SB_LINEAR_API_KEY="dev-token"
+export LINEAR_API_URL="http://127.0.0.1:8787/graphql"
+export LINEAR_API_KEY="dev-token"
 ```
-
-For `synth-managed-research`, use the same token style already supported by its client (`raw` or `Bearer`) and wire endpoint in your local integration path to `http://127.0.0.1:8787/graphql`.
 
 ## Parity Tests
 
-Run GraphQL parity checks for the exact query/mutation shapes currently used by `synth-background` and `synth-managed-research`:
+Run GraphQL parity checks for the implemented query/mutation shapes:
 
 ```bash
 ./scripts/parity_test.sh
@@ -104,7 +111,7 @@ To copy real Linear projects into `sublinear` with exact project IDs and metadat
 
 This requires:
 - `sublinear` running (`SUBLINEAR_GRAPHQL_URL`, default `http://127.0.0.1:8787/graphql`)
-- Linear API key in `REAL_LINEAR_API_KEY` (or `LINEAR_API_KEY` / `SB_LINEAR_API_KEY`)
+- Linear API key in `REAL_LINEAR_API_KEY` (or `LINEAR_API_KEY`)
 
 ## License
 

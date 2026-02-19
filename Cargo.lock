@@ -2280,8 +2280,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "sublinear"
-version = "0.1.0"
+name = "sublinear-dev"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-graphql",

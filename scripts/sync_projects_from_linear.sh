@@ -6,16 +6,14 @@ SUBLINEAR_API_KEY="${SUBLINEAR_API_KEY:-dev-token}"
 REAL_LINEAR_GRAPHQL_URL="${REAL_LINEAR_GRAPHQL_URL:-https://api.linear.app/graphql}"
 PAGE_SIZE="${SYNC_PAGE_SIZE:-100}"
 
-if [[ -z "${REAL_LINEAR_API_KEY:-}" && -z "${LINEAR_API_KEY:-}" && -z "${SB_LINEAR_API_KEY:-}" ]]; then
-  if [[ -f "/Users/joshpurtell/Documents/Github/synth-background/.env" ]]; then
-    # shellcheck disable=SC1091
-    source "/Users/joshpurtell/Documents/Github/synth-background/.env"
-  fi
+if [[ -z "${REAL_LINEAR_API_KEY:-}" && -z "${LINEAR_API_KEY:-}" && -f ".env.real-linear" ]]; then
+  # shellcheck disable=SC1091
+  source ".env.real-linear"
 fi
 
-REAL_AUTH="${REAL_LINEAR_API_KEY:-${LINEAR_API_KEY:-${SB_LINEAR_API_KEY:-}}}"
+REAL_AUTH="${REAL_LINEAR_API_KEY:-${LINEAR_API_KEY:-}}"
 if [[ -z "${REAL_AUTH}" ]]; then
-  echo "Missing real Linear API key. Set REAL_LINEAR_API_KEY (or LINEAR_API_KEY / SB_LINEAR_API_KEY)." >&2
+  echo "Missing real Linear API key. Set REAL_LINEAR_API_KEY (or LINEAR_API_KEY)." >&2
   exit 1
 fi
 
