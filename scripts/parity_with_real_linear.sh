@@ -67,8 +67,40 @@ has_errors() {
   jq -e '.errors and (.errors | length > 0)' >/dev/null <<<"${json}"
 }
 
+gql_call_any_status() {
+  local endpoint="$1"
+  local auth="$2"
+  local query="$3"
+  local vars="${4-}"
+  local payload
+  if [[ -z "${vars}" ]]; then
+    vars='{}'
+  fi
+  payload="$(jq -cn --arg q "${query}" --arg v "${vars}" '{query:$q, variables:($v|fromjson)}')"
+  curl -sS \
+    -H "Authorization: ${auth}" \
+    -H "Content-Type: application/json" \
+    -d "${payload}" \
+    "${endpoint}"
+}
+
 FAILS=0
 CHECKS=0
+
+assert_equal_values() {
+  local label="$1"
+  local sub_val="$2"
+  local real_val="$3"
+  CHECKS=$((CHECKS + 1))
+  if [[ "${sub_val}" != "${real_val}" ]]; then
+    echo "FAIL ${label}: value mismatch" >&2
+    echo "  sublinear: ${sub_val}" >&2
+    echo "  real     : ${real_val}" >&2
+    FAILS=$((FAILS + 1))
+  else
+    echo "PASS ${label}"
+  fi
+}
 
 compare_pair() {
   local label="$1"
@@ -104,6 +136,35 @@ compare_pair() {
   else
     echo "PASS ${label}"
   fi
+}
+
+compare_value_pair() {
+  local label="$1"
+  local query="$2"
+  local vars_sub="${3-}"
+  local vars_real="${4-}"
+  local jq_expr="$5"
+
+  local sub_resp real_resp sub_val real_val
+  sub_resp="$(gql_call "${SUB_GRAPHQL_URL}" "${SUB_AUTH_KEY}" "${query}" "${vars_sub}")"
+  real_resp="$(gql_call "${REAL_GRAPHQL_URL}" "${REAL_AUTH}" "${query}" "${vars_real}")"
+
+  if has_errors "${sub_resp}"; then
+    CHECKS=$((CHECKS + 1))
+    echo "FAIL ${label}: sublinear returned errors: $(jq -c '.errors' <<<"${sub_resp}")" >&2
+    FAILS=$((FAILS + 1))
+    return
+  fi
+  if has_errors "${real_resp}"; then
+    CHECKS=$((CHECKS + 1))
+    echo "FAIL ${label}: real Linear returned errors: $(jq -c '.errors' <<<"${real_resp}")" >&2
+    FAILS=$((FAILS + 1))
+    return
+  fi
+
+  sub_val="$(jq -c "${jq_expr}" <<<"${sub_resp}")"
+  real_val="$(jq -c "${jq_expr}" <<<"${real_resp}")"
+  assert_equal_values "${label}" "${sub_val}" "${real_val}"
 }
 
 echo "Starting sublinear..."
@@ -183,6 +244,13 @@ compare_pair "project.by_name" \
   'query($name:String!){projects(filter:{name:{eq:$name}},first:1){nodes{id name slugId state archivedAt url}}}' \
   "{\"name\":\"${project_name}\"}" \
   "{\"name\":\"${project_name}\"}"
+
+random_missing_name="missing-project-${RANDOM}-$(date +%s)"
+compare_value_pair "project.by_name.missing_count" \
+  'query($name:String!){projects(filter:{name:{eq:$name}},first:1){nodes{id}}}' \
+  "{\"name\":\"${random_missing_name}\"}" \
+  "{\"name\":\"${random_missing_name}\"}" \
+  '.data.projects.nodes | length'
 sub_project_id="$(jq -r '.data.projects.nodes[0].id // empty' <<<"${sub_project}")"
 real_project_id="$(jq -r '.data.projects.nodes[0].id // empty' <<<"${real_project}")"
 if [[ -z "${sub_project_id}" || -z "${real_project_id}" ]]; then
@@ -207,6 +275,12 @@ compare_pair "issue.get" \
   "{\"id\":\"${sub_issue_id}\"}" \
   "{\"id\":\"${real_issue_id}\"}"
 
+compare_value_pair "project.issues.first_1_count" \
+  'query($projectId:String!,$first:Int!){project(id:$projectId){issues(first:$first){nodes{id}}}}' \
+  "{\"projectId\":\"${sub_project_id}\",\"first\":1}" \
+  "{\"projectId\":\"${real_project_id}\",\"first\":1}" \
+  '.data.project.issues.nodes | length'
+
 compare_pair "workflowStates.top_level" \
   'query($teamId:ID!){workflowStates(filter:{team:{id:{eq:$teamId}}}){nodes{id name type}}}' \
   "{\"teamId\":\"${sub_team_id}\"}" \
@@ -224,6 +298,17 @@ compare_pair "issueUpdate.state_only" \
   "{\"id\":\"${sub_issue_id}\",\"stateId\":\"${sub_in_progress}\"}" \
   "{\"id\":\"${real_issue_id}\",\"stateId\":\"${real_in_progress}\"}"
 
+roundtrip_desc="roundtrip-desc-$(date +%s)"
+compare_pair "issueUpdate.description_roundtrip" \
+  'mutation($id:String!,$input:IssueUpdateInput!){issueUpdate(id:$id,input:$input){success issue{id title url state{id name type}}}}' \
+  "{\"id\":\"${sub_issue_id}\",\"input\":{\"description\":\"${roundtrip_desc}\"}}" \
+  "{\"id\":\"${real_issue_id}\",\"input\":{\"description\":\"${roundtrip_desc}\"}}"
+compare_value_pair "issue.description_matches" \
+  'query($id:String!){issue(id:$id){description}}' \
+  "{\"id\":\"${sub_issue_id}\"}" \
+  "{\"id\":\"${real_issue_id}\"}" \
+  '.data.issue.description'
+
 compare_pair "issues.list.project_scope" \
   'query($teamId:ID!,$projectId:ID!,$first:Int!){issues(filter:{team:{id:{eq:$teamId}},project:{id:{eq:$projectId}},state:{name:{neq:"Backlog"}}},first:$first,orderBy:updatedAt){nodes{id identifier title url description assignee{id name email} project{id name slugId state archivedAt} state{name type} labels{nodes{name}} updatedAt}}}' \
   "{\"teamId\":\"${sub_team_id}\",\"projectId\":\"${sub_project_id}\",\"first\":25}" \
@@ -238,6 +323,12 @@ compare_pair "commentCreate.success_only" \
   'mutation($issueId:String!,$body:String!){commentCreate(input:{issueId:$issueId,body:$body}){success}}' \
   "{\"issueId\":\"${sub_issue_id}\",\"body\":\"parity comment sb\"}" \
   "{\"issueId\":\"${real_issue_id}\",\"body\":\"parity comment sb\"}"
+
+multiline_body=$'parity multiline comment\nline-two'
+compare_pair "commentCreate.multiline_body" \
+  'mutation($issueId:String!,$body:String!){commentCreate(input:{issueId:$issueId,body:$body}){success comment{id body url}}}' \
+  "$(jq -cn --arg issueId "${sub_issue_id}" --arg body "${multiline_body}" '{issueId:$issueId, body:$body}')" \
+  "$(jq -cn --arg issueId "${real_issue_id}" --arg body "${multiline_body}" '{issueId:$issueId, body:$body}')"
 
 compare_pair "team.states_nested" \
   'query($teamId:String!){team(id:$teamId){states{nodes{id name type}}}}' \
@@ -266,10 +357,36 @@ compare_pair "issues.by_identifiers_path" \
   "{\"teamKey\":\"${sub_team_key}\",\"numbers\":[${sub_num}]}" \
   "{\"teamKey\":\"${real_team_key}\",\"numbers\":[${real_num}]}"
 
+compare_pair "issues.by_identifiers_with_unknown" \
+  'query($teamKey:String!,$numbers:[Float!]!){issues(filter:{team:{key:{eq:$teamKey}},number:{in:$numbers}},first:50){nodes{identifier title}}}' \
+  "{\"teamKey\":\"${sub_team_key}\",\"numbers\":[${sub_num},99999999]}" \
+  "{\"teamKey\":\"${real_team_key}\",\"numbers\":[${real_num},99999999]}"
+
 compare_pair "issueArchive" \
   'mutation($id:String!){issueArchive(id:$id){success}}' \
   "{\"id\":\"${sub_issue_id}\"}" \
   "{\"id\":\"${real_issue_id}\"}"
+
+sub_after_archive="$(gql_call "${SUB_GRAPHQL_URL}" "${SUB_AUTH_KEY}" 'query($projectId:String!,$first:Int!){project(id:$projectId){issues(first:$first){nodes{id}}}}' "{\"projectId\":\"${sub_project_id}\",\"first\":200}")"
+real_after_archive="$(gql_call "${REAL_GRAPHQL_URL}" "${REAL_AUTH}" 'query($projectId:String!,$first:Int!){project(id:$projectId){issues(first:$first){nodes{id}}}}' "{\"projectId\":\"${real_project_id}\",\"first\":200}")"
+sub_contains_archived="$(jq -r '.data.project.issues.nodes | map(.id) | index("'"${sub_issue_id}"'") != null' <<<"${sub_after_archive}")"
+real_contains_archived="$(jq -r '.data.project.issues.nodes | map(.id) | index("'"${real_issue_id}"'") != null' <<<"${real_after_archive}")"
+assert_equal_values "issueArchive.visibility_in_project_list" "${sub_contains_archived}" "${real_contains_archived}"
+
+bad_token_query='query{viewer{id}}'
+sub_bad_auth_resp="$(gql_call_any_status "${SUB_GRAPHQL_URL}" "invalid-token" "${bad_token_query}" '{}')"
+real_bad_auth_resp="$(gql_call_any_status "${REAL_GRAPHQL_URL}" "invalid-token" "${bad_token_query}" '{}')"
+sub_bad_has_errors="false"
+real_bad_has_errors="false"
+has_errors "${sub_bad_auth_resp}" && sub_bad_has_errors="true" || true
+has_errors "${real_bad_auth_resp}" && real_bad_has_errors="true" || true
+assert_equal_values "auth.invalid_token_error_mode" "${sub_bad_has_errors}" "${real_bad_has_errors}"
+
+compare_value_pair "team.states.non_empty_bool" \
+  'query($teamId:String!){team(id:$teamId){states{nodes{id}}}}' \
+  "{\"teamId\":\"${sub_team_id}\"}" \
+  "{\"teamId\":\"${real_team_id}\"}" \
+  '.data.team.states.nodes | length > 0'
 
 echo
 if [[ ${FAILS} -gt 0 ]]; then
